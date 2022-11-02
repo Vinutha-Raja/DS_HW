@@ -78,6 +78,7 @@ type Raft struct {
 	ElectionTimeout int64
 	ElectionTimeoutNum int
 	ApplyCh chan ApplyMsg
+	AllowApplyToSM bool
 	// Your data here (2A, 2B, 2C).
 	// Look at the paper's Figure 2 for a description of what
 	// state a Raft server must maintain.
@@ -423,6 +424,7 @@ func (rf *Raft) AppendEntry(args *AppendEntryArgs, reply *AppendEntryReply) {
 	myLastIndex := len(rf.Log) - 1
 	if args.PrevLogIndex > myLastIndex  {
 		reply.ConflictTerm = myLastIndex + 1
+		rf.mu.Unlock()
 		return
 	}
 
@@ -460,7 +462,12 @@ func (rf *Raft) AppendEntry(args *AppendEntryArgs, reply *AppendEntryReply) {
 	if args.LeaderCommit > rf.CommitIndex {
 		rf.CommitIndex = min(args.LeaderCommit, len(rf.Log) - 1 )
 	}
-	go rf.sendCommittedEntries()
+
+	if rf.CommitIndex > rf.LastApplied && !rf.AllowApplyToSM {
+		rf.AllowApplyToSM = true
+		go rf.sendCommittedEntries()
+	}
+
 	reply.Success = true
 	rf.mu.Unlock()
 
@@ -476,15 +483,33 @@ func min(a int, b int) int {
 
 func (rf *Raft) sendCommittedEntries() {
 	rf.mu.Lock()
-	for rf.LastApplied < rf.CommitIndex {
-		rf.LastApplied += 1
-		comm := ApplyMsg{}
-		comm.CommandValid = true
-		comm.Command = rf.Log[rf.LastApplied].Command
-		comm.CommandIndex = rf.LastApplied + 1
-		fmt.Printf("***********Candidate %d, Committing entry comm.CommandIndex: %d, comm.CommandIndex: %v\n", rf.CandidateId, comm.CommandIndex, comm.Command)
-		rf.ApplyCh <- comm
+	// for rf.LastApplied < rf.CommitIndex {
+	// 	rf.LastApplied += 1
+	// 	comm := ApplyMsg{}
+	// 	comm.CommandValid = true
+	// 	comm.Command = rf.Log[rf.LastApplied].Command
+	// 	comm.CommandIndex = rf.LastApplied 
+	// 	fmt.Printf("***********Candidate %d, Committing entry comm.CommandIndex: %d, comm.CommandIndex: %v\n", rf.CandidateId, comm.CommandIndex, comm.Command)
+	// 	rf.ApplyCh <- comm
+	// }
+
+	lastApplied := rf.LastApplied
+	commitIndex := rf.CommitIndex
+	iam := rf.me
+	rf.mu.Unlock()
+
+	for i := lastApplied + 1; i <= commitIndex; i++ {
+		rf.mu.Lock()
+		log := rf.Log[i].Command
+		rf.mu.Unlock()
+
+		fmt.Printf("%v applying value %v on channel", iam, log)
+		rf.ApplyCh <- ApplyMsg{CommandIndex: i, Command: log, CommandValid: true}
 	}
+
+	rf.mu.Lock()
+	rf.LastApplied = commitIndex
+	rf.AllowApplyToSM = false
 	rf.mu.Unlock()
 } 
 
@@ -499,10 +524,13 @@ func (rf *Raft) findEntriesToBeCommitted (){
 			}
 		}
 		if majority > len(rf.peers)/2 {
-			fmt.Printf("Candidate %d, Current Commit Id %d ", rf.CandidateId, rf.CommitIndex)
+			fmt.Printf("\nCandidate %d, Current Commit Id %d ", rf.CandidateId, rf.CommitIndex)
 			rf.CommitIndex = commit_id
-			fmt.Printf("Candidate %d, New Commit Id %d ", rf.CandidateId, rf.CommitIndex)
-			go rf.sendCommittedEntries()
+			fmt.Printf("\nCandidate %d, New Commit Id %d ", rf.CandidateId, rf.CommitIndex)
+			if rf.CommitIndex > rf.LastApplied && !rf.AllowApplyToSM {
+				rf.AllowApplyToSM = true
+				go rf.sendCommittedEntries()
+			}
 			break
 		}
 	}
