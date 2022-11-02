@@ -374,6 +374,23 @@ func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *Reques
 	return ok
 }
 
+// func (rf *Raft) AppendEntry(args *AppendEntryArgs, reply *AppendEntryReply) {
+// 	rf.mu.Lock()
+// 	fmt.Printf("\nAppend Entry received by %d from %d for term %d ", rf.CandidateId, args.LeaderId, args.Term)
+// 	reply.Term = rf.CurrentTerm
+// 	if args.Term < rf.CurrentTerm {
+// 		reply.Success = false
+// 	} else {
+// 		// fmt.Printf("\nSetting append Entry time")
+// 		rf.LastAppendEntryTime = time.Now().UnixNano() / int64(time.Millisecond)
+// 		rf.State = "Follower"
+// 		rf.CurrentTerm = args.Term
+// 		reply.Success = true
+// 	}
+// 	rf.mu.Unlock()
+
+// }
+
 func (rf *Raft) AppendEntry(args *AppendEntryArgs, reply *AppendEntryReply) {
 	rf.mu.Lock()
 	fmt.Printf("\nAppend Entry received by %d from %d for term %d ", rf.CandidateId, args.LeaderId, args.Term)
@@ -381,20 +398,26 @@ func (rf *Raft) AppendEntry(args *AppendEntryArgs, reply *AppendEntryReply) {
 
 	if args.Term < rf.CurrentTerm {
 		reply.Success = false
+		rf.mu.Unlock()
 		return 
-	} 
-	// rf.LastAppendEntryTime = time.Now().UnixNano() / int64(time.Millisecond)
-
-    //TODO check >= ?
-	if args.Term >= rf.CurrentTerm  {
+	} else {
 		fmt.Printf("\nSetting append Entry time")
 		rf.LastAppendEntryTime = time.Now().UnixNano() / int64(time.Millisecond)
 		rf.State = "Follower"
-		// rand.Seed(time.Now().UnixNano())
-		// rf.ElectionTimeoutNum = rand.Intn(500 - 400 + 1) + 400
-		// rf.ElectionTimeout = time.Now().UnixNano() / 1000000 + int64(rf.ElectionTimeoutNum)
 		rf.CurrentTerm = args.Term
+		reply.Success = true
 	}
+
+    // //TODO check >= ?
+	// if args.Term >= rf.CurrentTerm  {
+	// 	fmt.Printf("\nSetting append Entry time")
+	// 	rf.LastAppendEntryTime = time.Now().UnixNano() / int64(time.Millisecond)
+	// 	rf.State = "Follower"
+	// 	// rand.Seed(time.Now().UnixNano())
+	// 	// rf.ElectionTimeoutNum = rand.Intn(500 - 400 + 1) + 400
+	// 	// rf.ElectionTimeout = time.Now().UnixNano() / 1000000 + int64(rf.ElectionTimeoutNum)
+	// 	rf.CurrentTerm = args.Term
+	// }
 
 	// prevLogIndex is > mylastLogIndex
 	myLastIndex := len(rf.Log) - 1
@@ -416,6 +439,7 @@ func (rf *Raft) AppendEntry(args *AppendEntryArgs, reply *AppendEntryReply) {
 		}
 		rf.Log = rf.Log[:args.PrevLogIndex]
 		reply.Success = false
+		rf.mu.Unlock()
 		return
 	}
     // If consistency check passes then append the logs 
@@ -594,6 +618,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 		fmt.Printf("\n************candidate %d, command %v, index %d term %d\n", rf.CandidateId, command, index, term)
 
 	}
+	rf.mu.Unlock()
 	return index, term, isLeader
 }
 
