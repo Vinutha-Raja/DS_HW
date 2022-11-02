@@ -257,54 +257,6 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 }
 
 
-// func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
-
-// 	rf.mu.Lock()
-
-//     if args.Term < rf.CurrentTerm {
-// 		reply.CurrentTerm = rf.CurrentTerm
-// 		reply.VoteGranted = false
-// 		return 
-// 	}
-
-//     reply.CurrentTerm = rf.CurrentTerm
-    
-// 	isLogNotComplete := (rf.Log[len(rf.Log)-1].CurrentTerm > args.LastLogTerm || 
-// 	 (rf.Log[len(rf.Log)-1].CurrentTerm == args.LastLogTerm && len(rf.Log)-1 > args.LastLogIndex))
-
-//     // Not voted or voted for same candidate in that term and log is complete then grant vote
-// 	if (rf.VoteTerm < args.Term || (rf.VoteTerm == args.Term && rf.VotedFor == args.CandidateId)) && !isLogNotComplete{
-// 		fmt.Printf("Granting vote")
-// 		reply.VoteGranted = true
-// 		rf.VotedFor = args.CandidateId
-// 		rf.VoteTerm = args.Term
-// 		rf.CurrentTerm = args.Term
-// 		rf.State = "Follower"
-// 		rand.Seed(time.Now().UnixNano())
-// 		rf.ElectionTimeoutNum = rand.Intn(500 - 400 + 1) + 400
-// 		rf.ElectionTimeout = time.Now().UnixNano() / 1000000 + int64(rf.ElectionTimeoutNum)
-// 		fmt.Printf("\nCandidate %d voting for %d in term %d", rf.CandidateId, args.CandidateId, args.Term)
-
-// 	} else {
-// 		reply.VoteGranted = false
-// 	}
-
-// 	if args.Term > rf.CurrentTerm { 
-// 		rf.CurrentTerm = args.Term
-// 		rf.State = "Follower"
-// 		reply.VoteGranted = false
-// 		// rand.Seed(time.Now().UnixNano())
-// 		// rf.ElectionTimeoutNum = rand.Intn(500 - 400 + 1) + 400
-// 		// rf.ElectionTimeout = time.Now().UnixNano() / 1000000 + int64(rf.ElectionTimeoutNum)
-// 	}
-
-
-// 	// fmt.Printf("\n Vote granted value for Candidate %d voting for %d in term %d is %v", rf.CandidateId, args.CandidateId, args.Term, reply.VoteGranted)
-// 	rf.mu.Unlock()
-//     return 
-
-// }
-
 //
 // example code to send a RequestVote RPC to a server.
 // server is the index of the target server in rf.peers[].
@@ -375,22 +327,6 @@ func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *Reques
 	return ok
 }
 
-// func (rf *Raft) AppendEntry(args *AppendEntryArgs, reply *AppendEntryReply) {
-// 	rf.mu.Lock()
-// 	fmt.Printf("\nAppend Entry received by %d from %d for term %d ", rf.CandidateId, args.LeaderId, args.Term)
-// 	reply.Term = rf.CurrentTerm
-// 	if args.Term < rf.CurrentTerm {
-// 		reply.Success = false
-// 	} else {
-// 		// fmt.Printf("\nSetting append Entry time")
-// 		rf.LastAppendEntryTime = time.Now().UnixNano() / int64(time.Millisecond)
-// 		rf.State = "Follower"
-// 		rf.CurrentTerm = args.Term
-// 		reply.Success = true
-// 	}
-// 	rf.mu.Unlock()
-
-// }
 
 func (rf *Raft) AppendEntry(args *AppendEntryArgs, reply *AppendEntryReply) {
 	rf.mu.Lock()
@@ -497,20 +433,16 @@ func (rf *Raft) sendCommittedEntries() {
 	// 	fmt.Printf("***********Candidate %d, Committing entry comm.CommandIndex: %d, comm.CommandIndex: %v\n", rf.CandidateId, comm.CommandIndex, comm.Command)
 	// 	rf.ApplyCh <- comm
 	// }
-
 	lastApplied := rf.LastApplied
 	commitIndex := rf.CommitIndex
 	rf.mu.Unlock()
-
 	for i := lastApplied + 1; i <= commitIndex; i++ {
 		rf.mu.Lock()
 		log := rf.Log[i].Command
 		rf.mu.Unlock()
-
 		fmt.Printf("\nCandidate %d applying value %v on channel with commitIndex %d", rf.CandidateId, log, i)
 		rf.ApplyCh <- ApplyMsg{CommandIndex: i, Command: log, CommandValid: true}
 	}
-
 	rf.mu.Lock()
 	rf.LastApplied = commitIndex
 	rf.AllowApplyToSM = false
@@ -531,11 +463,10 @@ func (rf *Raft) findEntriesToBeCommitted (){
 			fmt.Printf("\nCandidate %d, Current Commit Id %d ", rf.CandidateId, rf.CommitIndex)
 			rf.CommitIndex = commit_id
 			fmt.Printf("\nCandidate %d, New Commit Id %d ", rf.CandidateId, rf.CommitIndex)
-			
 			break
 		}
 	}
-
+    // Check if a new Commit Id is found and apply only if there is no other apply is being done
 	if rf.CommitIndex > rf.LastApplied && !rf.AllowApplyToSM {
 		rf.AllowApplyToSM = true
 		go rf.sendCommittedEntries()
