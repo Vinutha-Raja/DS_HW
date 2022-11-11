@@ -18,11 +18,11 @@ package raft
 //
 
 import (
-	//	"bytes"
+	"bytes"
 	"sync"
 	"sync/atomic"
 
-	//	"6.824/labgob"
+	"6.824/labgob"
 	"6.824/labrpc"
 	"math/rand"
 	"time"
@@ -139,6 +139,16 @@ func (rf *Raft) persist() {
 	// e.Encode(rf.yyy)
 	// data := w.Bytes()
 	// rf.persister.SaveRaftState(data)
+
+	w := new(bytes.Buffer)
+	e := labgob.NewEncoder(w)
+	e.Encode(rf.CurrentTerm)
+	e.Encode(rf.VotedFor)
+	e.Encode(rf.Log)
+	data := w.Bytes()
+	rf.persister.SaveRaftState(data)
+
+
 }
 
 
@@ -162,6 +172,20 @@ func (rf *Raft) readPersist(data []byte) {
 	//   rf.xxx = xxx
 	//   rf.yyy = yyy
 	// }
+
+	r := bytes.NewBuffer(data)
+	d := labgob.NewDecoder(r)
+	var currentTerm int
+	var VotedFor int 
+	var Log []LogEntry
+	if d.Decode(&currentTerm) != nil ||
+	   d.Decode(&VotedFor) != nil ||  d.Decode(&Log) != nil {
+	   fmt.Printf("Server %d Error reading persisted data", rf.CandidateId)
+	} else {
+	  rf.CurrentTerm = currentTerm
+	  rf.VotedFor = VotedFor
+	  rf.Log = Log
+	}
 }
 
 
@@ -227,8 +251,10 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		if (rf.VoteTerm < args.Term || (rf.VoteTerm == args.Term && rf.VotedFor == args.CandidateId)) && !(mylastTerm > args.LastLogTerm || (args.LastLogTerm == mylastTerm && mylastindex > args.LastLogIndex)){
 			reply.VoteGranted = true
 			rf.VotedFor = args.CandidateId
+			rf.persist()
 			rf.VoteTerm = args.Term
 			rf.CurrentTerm = args.Term
+			rf.persist()
 			rf.State = "Follower"
 			rand.Seed(time.Now().UnixNano())
 			rf.ElectionTimeoutNum = rand.Intn(500 - 400 + 1) + 400
@@ -238,6 +264,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 			// currentTerm is less than Term
 			if args.Term > rf.CurrentTerm {
 				rf.CurrentTerm = args.Term
+				rf.persist()
 				rf.State = "Follower"
 				// rand.Seed(time.Now().UnixNano())
 				// rf.ElectionTimeoutNum = rand.Intn(500 - 400 + 1) + 400
@@ -297,6 +324,7 @@ func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *Reques
 		}
 		if reply.CurrentTerm > rf.CurrentTerm {
 			rf.CurrentTerm = reply.CurrentTerm
+			rf.persist()
 			rf.State = "Follower"
 			// rand.Seed(time.Now().UnixNano())
 			// rf.ElectionTimeoutNum = rand.Intn(500 - 400 + 1) + 400
@@ -342,6 +370,7 @@ func (rf *Raft) AppendEntry(args *AppendEntryArgs, reply *AppendEntryReply) {
 		rf.LastAppendEntryTime = time.Now().UnixNano() / int64(time.Millisecond)
 		rf.State = "Follower"
 		rf.CurrentTerm = args.Term
+		rf.persist()
 		reply.Success = true
 	}
 
@@ -379,6 +408,7 @@ func (rf *Raft) AppendEntry(args *AppendEntryArgs, reply *AppendEntryReply) {
 			reply.ConflictIndex = i
 		}
 		rf.Log = rf.Log[:args.PrevLogIndex]
+		rf.persist()
 		reply.Success = false
 		// fmt.Printf("\n Server %d, myLastTerm != args.PrevLogTerm", rf.CandidateId)
 		rf.mu.Unlock()
@@ -394,8 +424,10 @@ func (rf *Raft) AppendEntry(args *AppendEntryArgs, reply *AppendEntryReply) {
 	}
 	args.Entries = args.Entries[start:]
 	rf.Log = rf.Log[:commit_id]
+	rf.persist()
 	if len(args.Entries) > 0 {
 		rf.Log = append(rf.Log, args.Entries...)
+		rf.persist()
 	}
 	// fmt.Printf("\n Commit index before for server %d is %d", rf.CandidateId, rf.CommitIndex)
 	// Check for commitIndex update 
@@ -483,6 +515,7 @@ func (rf *Raft) sendHeartBeats(server int, args *AppendEntryArgs, reply *AppendE
 		if reply.Term > rf.CurrentTerm {
 			// fmt.Printf("\nCandidate %d  updating tetm from response ***", rf.CandidateId)
 			rf.CurrentTerm = reply.Term
+			rf.persist()
 			rf.State = "Follower"
 			// rand.Seed(time.Now().UnixNano())
 			// rf.ElectionTimeoutNum = rand.Intn(500 - 400 + 1) + 400
@@ -581,6 +614,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	if rf.State == "Leader" {
 		// fmt.Printf("client command received by : %d\n", rf.CandidateId)
         rf.Log = append(rf.Log, LogEntry{command, rf.CurrentTerm})
+		rf.persist()
 		// rf.NextIndex[rf.me] = rf.NextIndex[rf.me] + 1
 		// rf.MatchIndex[rf.me] = rf.MatchIndex[rf.me] + 1
 		index = len(rf.Log) - 1
@@ -661,6 +695,7 @@ func (rf *Raft) ticker() {
 			
             //start election
 		    rf.CurrentTerm = rf.CurrentTerm + 1
+			rf.persist()
 			rf.TotalVotes = 1
 			// fmt.Printf("\nSTARTING ELECTION: %d in term %d with votecount %d", rf.CandidateId, rf.CurrentTerm, rf.TotalVotes)
 			rf.VoteTerm = rf.CurrentTerm
