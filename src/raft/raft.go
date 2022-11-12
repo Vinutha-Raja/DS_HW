@@ -429,15 +429,15 @@ func (rf *Raft) AppendEntry(args *AppendEntryArgs, reply *AppendEntryReply) {
 		rf.Log = append(rf.Log, args.Entries...)
 		rf.persist()
 	}
-	// fmt.Printf("\n Commit index before for server %d is %d", rf.CandidateId, rf.CommitIndex)
+	fmt.Printf("\n Commit index before for server %d is %d", rf.CandidateId, rf.CommitIndex)
 	// Check for commitIndex update 
 	if args.LeaderCommit > rf.CommitIndex {
 		rf.CommitIndex = min(args.LeaderCommit, len(rf.Log) - 1 )
 	}
-	// fmt.Printf("\n Commit index after for server %d is %d", rf.CandidateId, rf.CommitIndex)
+	fmt.Printf("\n Commit index after for server %d is %d", rf.CandidateId, rf.CommitIndex)
 	if rf.CommitIndex > rf.LastApplied && !rf.AllowApplyToSM {
 		rf.AllowApplyToSM = true
-		// fmt.Printf("\n Commit index changed for server %d", rf.CandidateId)
+		fmt.Printf("\n Commit index changed for server %d", rf.CandidateId)
 		go rf.sendCommittedEntries()
 	}
 
@@ -466,7 +466,7 @@ func (rf *Raft) sendCommittedEntries() {
 	// 	rf.ApplyCh <- comm
 	// }
 	lastApplied := rf.LastApplied
-	commitIndex := rf.CommitIndex
+	commitIndex := min(rf.CommitIndex, len(rf.Log) - 1)
 	rf.mu.Unlock()
 	for i := lastApplied + 1; i <= commitIndex; i++ {
 		rf.mu.Lock()
@@ -482,6 +482,11 @@ func (rf *Raft) sendCommittedEntries() {
 } 
 
 func (rf *Raft) findEntriesToBeCommitted (){
+	if len(rf.Log) - 1 <= rf.CommitIndex {
+		//nothing to commit
+		return
+	}
+
 	for commit_id := len(rf.Log) - 1; commit_id > rf.CommitIndex; commit_id-- {
 		majority := 1
 		if rf.Log[commit_id].CurrentTerm == rf.CurrentTerm {
@@ -532,7 +537,7 @@ func (rf *Raft) sendHeartBeats(server int, args *AppendEntryArgs, reply *AppendE
 
 		if reply.Success {
 			// fmt.Printf("\n Server %d, Before rf.MatchIndex: %d, rf.NextIndex: %d", server, rf.MatchIndex[server], rf.NextIndex[server])
-			rf.MatchIndex[server] = args.PrevLogIndex + len(args.Entries)
+			rf.MatchIndex[server] = min(args.PrevLogIndex + len(args.Entries), len(rf.Log) - 1)
 			rf.NextIndex[server] = rf.MatchIndex[server] + 1
 			// fmt.Printf("\n Server %d, After rf.MatchIndex: %d, rf.NextIndex: %d", server, rf.MatchIndex[server], rf.NextIndex[server])
 			// check what can be committed
@@ -546,10 +551,10 @@ func (rf *Raft) sendHeartBeats(server int, args *AppendEntryArgs, reply *AppendE
 				}
 			}
 			if i <= 0 {
-				rf.NextIndex[server] = reply.ConflictIndex
+				rf.NextIndex[server] = min(reply.ConflictIndex, len(rf.Log))
 				// fmt.Printf("\nCandidate %d, rf.NextIndex[server] : %d ", server, rf.NextIndex[server])
 			} else {
-				rf.NextIndex[server] = i + 1
+				rf.NextIndex[server] = min(i + 1, len(rf.Log))
 				// fmt.Printf("\nCandidate %d, rf.NextIndex[server] : %d ", server, rf.NextIndex[server])
 			}
 
