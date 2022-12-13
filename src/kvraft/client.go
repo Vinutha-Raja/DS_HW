@@ -7,6 +7,7 @@ import "math/big"
 
 type Clerk struct {
 	servers []*labrpc.ClientEnd
+	LeaderId int
 	// You will have to modify this struct.
 }
 
@@ -37,9 +38,26 @@ func MakeClerk(servers []*labrpc.ClientEnd) *Clerk {
 // arguments. and reply must be passed as a pointer.
 //
 func (ck *Clerk) Get(key string) string {
+	server := ck.LeaderId
+	value := ""
+	args := GetArgs{}
+	args.Key = key
+	args.RequestId = nrand()
+
+	for ; ; server = (server + 1) % (len(ck.servers)) {
+		reply := GetReply{}
+		ok := ck.servers[server].Call("KVServer.Get", &args, &reply)
+		if ok && reply.Err != "NotALeader" && reply.Err != "TimedOut"{
+			ck.LeaderId = server
+			if reply.Err == "OK" {
+				value = reply.Value
+			}
+			break
+		}
+	}
 
 	// You will have to modify this function.
-	return ""
+	return value
 }
 
 //
@@ -54,6 +72,21 @@ func (ck *Clerk) Get(key string) string {
 //
 func (ck *Clerk) PutAppend(key string, value string, op string) {
 	// You will have to modify this function.
+	server := ck.LeaderId
+	args := PutAppendArgs{}
+	args.Key = key
+	args.Value = value
+	args.Op = op
+	args.RequestId = nrand()
+	for ; ; server = (server + 1) % (len(ck.servers)) {
+		reply := PutAppendReply{}
+		ok := ck.servers[server].Call("KVServer.PutAppend", &args, &reply)
+		if ok && reply.Err != "NotALeader" && reply.Err != "TimedOut" {
+			ck.LeaderId = server
+			break
+		}
+
+	}
 }
 
 func (ck *Clerk) Put(key string, value string) {

@@ -429,15 +429,15 @@ func (rf *Raft) AppendEntry(args *AppendEntryArgs, reply *AppendEntryReply) {
 		rf.Log = append(rf.Log, args.Entries...)
 		rf.persist()
 	}
-	fmt.Printf("\n Commit index before for server %d is %d", rf.CandidateId, rf.CommitIndex)
+	// fmt.Printf("\n Commit index before for server %d is %d", rf.CandidateId, rf.CommitIndex)
 	// Check for commitIndex update 
 	if args.LeaderCommit > rf.CommitIndex {
 		rf.CommitIndex = min(args.LeaderCommit, len(rf.Log) - 1 )
 	}
-	fmt.Printf("\n Commit index after for server %d is %d", rf.CandidateId, rf.CommitIndex)
+	// fmt.Printf("\n Commit index after for server %d is %d", rf.CandidateId, rf.CommitIndex)
 	if rf.CommitIndex > rf.LastApplied && !rf.AllowApplyToSM {
 		rf.AllowApplyToSM = true
-		fmt.Printf("\n Commit index changed for server %d", rf.CandidateId)
+		// fmt.Printf("\n Commit index changed for server %d", rf.CandidateId)
 		go rf.sendCommittedEntries()
 	}
 
